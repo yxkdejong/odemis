@@ -444,6 +444,9 @@ class Camera(model.DigitalCamera):
 
             peak = simulate_peak(amplitude=20000, x0=peak_center_binned, width=width_binned,
                                 shape=sim_img.shape, dtype=sim_img.dtype)
+            # set all values in sim_img to the minimal sim_img value
+            min_val = sim_img.min()
+            sim_img[...] = min_val
             sim_img += peak
 
         # Add some noise

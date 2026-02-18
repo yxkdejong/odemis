@@ -505,12 +505,15 @@ class TestSimCamSpectrograph(unittest.TestCase):
         return weighted_average, p_max, profile.mean()
 
     def test_spectrograph_with_goffset(self):
+        move = 300
+        expected_ratio = 0.25
+
         self.mock_spectrograph.position.value["goffset"] = 0.0
         image_0 = self.camera.data.get()
         date_0 = image_0.metadata[model.MD_ACQ_DATE]
 
         # change offset
-        self.mock_spectrograph.position.value["goffset"] = 100.0
+        self.mock_spectrograph.position.value["goffset"] = move
 
         image_new = None
         for _ in range(10):
@@ -523,10 +526,10 @@ class TestSimCamSpectrograph(unittest.TestCase):
         x1, _, _ = self._find_peak(image_new)
 
         shift = x1 - x0
-        print(f"DEBUG TEST: x0={x0:.2f}, x1={x1:.2f}, shift={shift:.2f}")
+        print(f"DEBUG: Moved {move}, Peak went from {x0} to {x1}. Shift: {shift}")
 
-        self.assertGreater(abs(shift), 10.0, f"Expected shift ~25, got {shift}")
-        self.assertAlmostEqual(shift, 25.0, delta=2.0)
+        expected_shift = move * expected_ratio
+        self.assertAlmostEqual(shift, expected_shift, delta=0.5)
 
 if __name__ == '__main__':
     unittest.main()
