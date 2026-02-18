@@ -78,7 +78,7 @@
     init: {
         image: "sparc-spec-sim.h5",
     },
-    dependencies: {focus: "Spectrograph focus"}
+    dependencies: {focus: "Spectrograph focus", spectrograph: "Spectrograph"},
 }
 
 "Spectrometer Vis-NIR": {
