@@ -2501,6 +2501,9 @@ class FakeShamrockDLL(object):
         offset.value = self._detoffset[_val(entrancePort), _val(exitPort)]
 
     def ShamrockSetGratingOffset(self, device, grating, offset):
+        cur_offset = self._goffset[_val(grating) - 1]
+        new_offset = _val(offset)
+        time.sleep(abs(cur_offset - new_offset) / 10000)
         self._goffset[_val(grating) - 1] = _val(offset)
 
     def ShamrockGetGratingOffset(self, device, grating, p_offset):

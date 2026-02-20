@@ -1398,3 +1398,4 @@ def _CancelAutoFocusSpectrometer(future: model.ProgressiveFuture) -> bool:
         logging.debug("AutofocusSpectrometer cancellation requested.")
 
     return True
+
