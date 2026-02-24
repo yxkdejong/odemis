@@ -15,6 +15,7 @@ from odemis.util import executeAsyncTask, almost_equal
 from odemis.util.driver import guessActuatorMoveDuration
 from odemis.util.focus import MeasureSEMFocus, Measure1d, MeasureSpotsFocus, AssessFocus
 from odemis.util.img import Subtract
+from scipy.optimize import curve_fit
 
 def Gaussian(x, amplitude, x0, width):
     """
@@ -23,7 +24,7 @@ def Gaussian(x, amplitude, x0, width):
     x0 = peak's center
     width = standard deviation
     """
-    intensity = amplitude*numpy.exp((-0.5*(x-x0)/width)**2)
+    intensity = amplitude*numpy.exp((-0.5*(x-x0))/(width**2))
     return intensity
 
 
@@ -71,7 +72,7 @@ def estimate_goffset_scale(spgr: model.Actuator, detector: model.Detector, delta
     Estimates how many pixels the peak shifts per 1 unit of goffset.
     """
     # get initial state
-    data0 = detector.data.get()
+    data0 = detector.data.get(asap=False)
     p0 = find_peak_position(data0)
 
     # check limits before moving
@@ -80,11 +81,11 @@ def estimate_goffset_scale(spgr: model.Actuator, detector: model.Detector, delta
 
     # ensure that max limit isn't violated
     move_direction = 1 if (current_pos + delta < goffset_max) else -1
-    actual_delta = delta * move_direction
+    actual_delta = delta*move_direction
 
     # move and measure
     spgr.moveRelSync({"goffset": actual_delta})
-    data1 = detector.data.get()
+    data1 = detector.data.get(asap=False)
     p1 = find_peak_position(data1)
 
     # return back to start
@@ -93,16 +94,20 @@ def estimate_goffset_scale(spgr: model.Actuator, detector: model.Detector, delta
     # 5. calculate goffset scale
     scale = (p1-p0)/actual_delta
 
-    if abs(scale) < 1e-6:
+    logging.info(
+        f"SCALE TRACKING | p0: {p0:.1f} | p1: {p1:.1f} | Delta: {actual_delta} | Shift: {(p1-p0):.1f} | Result Scale: {scale:.4f}")
+
+    if abs(scale) < 1e-3:
         raise RuntimeError(f"Estimated goffset scale too small ({scale}).")
+        return 0.5 # fallback to a reasonable default if estimation fails, but warn about it
 
     return scale
 
 def SparcAutoGratingOffset(spgr: model.Actuator,
                            detector: model.Detector,
                            tolerance_px: float = 0.2,
-                           max_it: int = 10,
-                           gain: float = 0.7) -> model.ProgressiveFuture:
+                           max_it: int = 20,
+                           gain: float = 0.3) -> model.ProgressiveFuture:
 
     est_start = time.time() + 0.05
     est_time = max_it*0.5  # conservative estimate
@@ -123,12 +128,12 @@ def _DoSparcAutoGratingOffset(future: model.ProgressiveFuture,
                               max_it: int,
                               gain: float) -> bool:
 
-    original_pos = spgr.position.value.copy()
     success = False
 
     try:
         scale = estimate_goffset_scale(spgr, detector)
-        center_target = detector.shape[1]/2.0  # adjust if 0 is not the center
+        center_target = detector.resolution.value[0]/2 # adjust if 0 is not the center
+        total_goffset_displacement = 0.0
 
         for i in range(max_it):
             with future._centering_lock:
@@ -151,7 +156,9 @@ def _DoSparcAutoGratingOffset(future: model.ProgressiveFuture,
             max_step = 0.1*(maxv-minv)  # max 10% of range
 
             delta_goffset = max(-max_step, min(max_step, delta_goffset))
-            print(f"DEBUG | Iter: {i} | Peak: {peak_px:.1f} | Error: {error_px:.1f} | Move: {delta_goffset:.4f}")
+            total_goffset_displacement += delta_goffset
+
+            print(f"DEBUG | Iter: {i} | Peak: {peak_px:.1f} | Error: {error_px:.1f} | Move: {delta_goffset:.4f} | Total Change: {total_goffset_displacement:.4f}")
             spgr.moveRelSync({"goffset": delta_goffset})
             time.sleep(2)
 
@@ -168,16 +175,8 @@ def _DoSparcAutoGratingOffset(future: model.ProgressiveFuture,
         logging.error(f"Alignment error: {e}")
         raise
 
-    finally:
-        if not success:
-            try:
-                logging.info("Restoring original grating position")
-                spgr.moveAbsSync(original_pos)
-            except Exception:
-                logging.exception("Failed to restore goffset position")
-
-        with future._centering_lock:
-            future._centering_state = FINISHED
+    with future._centering_lock:
+        future._centering_state = FINISHED
 
 def _CancelSparcAutoGratingOffset(future: model.ProgressiveFuture):
     with future._centering_lock:

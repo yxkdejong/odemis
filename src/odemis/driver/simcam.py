@@ -433,14 +433,14 @@ class Camera(model.DigitalCamera):
             current_offset = self._spectrograph.position.value["goffset"]
 
             ccd_center_x = self._img_res[0]/2.0  # find the x-coordinate of the centre of the ccd
-            x0_px = ccd_center_x + current_offset * goffset_to_pixel
+            x0_px = ccd_center_x + current_offset*goffset_to_pixel
 
             bin_x = binning[0]  # binning factor along x-axis
             peak_center_binned = (x0_px - ltrb[0])/bin_x  # express the peak position in the ROI's coordinate system
 
             print(f"DEBUG: x0_px={x0_px}, ltrb0={ltrb[0]}, result={peak_center_binned}")
 
-            width_binned = width_px / bin_x
+            width_binned = width_px/bin_x
 
             peak = simulate_peak(amplitude=20000, x0=peak_center_binned, width=width_binned,
                                 shape=sim_img.shape, dtype=sim_img.dtype)

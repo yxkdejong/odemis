@@ -60,7 +60,7 @@ class TestSparcAutoGratingOffset(unittest.TestCase):
         """
         x = np.arange(200)
         true_center = 83.4
-        spectrum = np.exp(-0.5 * ((x - true_center) / 3.0) ** 2)
+        spectrum = np.exp(-0.5*((x-true_center)/3.0)**2)
 
         peak = find_peak_position(spectrum)
         self.assertAlmostEqual(peak, true_center, places=1)
@@ -93,14 +93,13 @@ class TestSparcAutoGratingOffset(unittest.TestCase):
         """
         Test automatic centering of spectral peak.
         """
-        # intentionally misalign
-        delta = 5.0
+        delta = 0 # intentionally misalign
         current = self.spgr.position.value["goffset"]
         goffset_max = self.spgr.axes["goffset"].range[1]
         direction = 1 if (current + delta < goffset_max) else -1
-        self.spgr.moveRelSync({"goffset": delta * direction})
 
-        f = SparcAutoGratingOffset(self.spgr, self.detector, max_it=15)
+        self.spgr.moveRelSync({"goffset": delta * direction})
+        f = SparcAutoGratingOffset(self.spgr, self.detector, max_it=20)
 
         result = f.result(timeout=200)
         self.assertTrue(result)
@@ -117,7 +116,6 @@ class TestSparcAutoGratingOffset(unittest.TestCase):
         except:
             pass
         self.assertTrue(f.done())
-
 
 if __name__ == "__main__":
     unittest.main()

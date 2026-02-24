@@ -1609,7 +1609,11 @@ class Shamrock(model.Actuator):
             flip_in_pos = self.GetFlipperMirror(INPUT_FLIPPER)
         else:
             flip_in_pos = 0
-        flip_out_pos = self.GetFlipperMirror(OUTPUT_FLIPPER)
+
+        if "flip-out" in self.axes:
+            flip_out_pos = self.GetFlipperMirror(OUTPUT_FLIPPER)
+        else:
+            flip_out_pos = 0
 
         goffset = self.GetGratingOffset(grating) + self.GetDetectorOffset(flip_in_pos, flip_out_pos)
         return goffset
@@ -2089,8 +2093,16 @@ class Shamrock(model.Actuator):
     def _doSetGoffsetAbs(self, target_offset): #Added
         target_offset = int(round(target_offset)) # ensure that we get integers for steps
         grating = self.GetGrating()
-        flip_in_pos = self.GetFlipperMirror(INPUT_FLIPPER)
-        flip_out_pos = self.GetFlipperMirror(OUTPUT_FLIPPER)
+
+        if "flip-in" in self.axes:
+            flip_in_pos = self.GetFlipperMirror(INPUT_FLIPPER)
+        else:
+            flip_in_pos = 0
+
+        if "flip-out" in self.axes:
+            flip_out_pos = self.GetFlipperMirror(OUTPUT_FLIPPER)
+        else:
+            flip_out_pos = 0
 
         with self._hw_access:
             current_grat_offset = self.GetGratingOffset(grating)
