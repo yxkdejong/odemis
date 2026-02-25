@@ -24,7 +24,7 @@ def Gaussian(x, amplitude, x0, width):
     x0 = peak's center
     width = standard deviation
     """
-    intensity = amplitude*numpy.exp((-0.5*(x-x0))/(width**2))
+    intensity = amplitude*numpy.exp(-0.5*((x-x0)/width)**2)
     return intensity
 
 
@@ -98,8 +98,13 @@ def estimate_goffset_scale(spgr: model.Actuator, detector: model.Detector, delta
         f"SCALE TRACKING | p0: {p0:.1f} | p1: {p1:.1f} | Delta: {actual_delta} | Shift: {(p1-p0):.1f} | Result Scale: {scale:.4f}")
 
     if abs(scale) < 1e-3:
-        raise RuntimeError(f"Estimated goffset scale too small ({scale}).")
-        return 0.5 # fallback to a reasonable default if estimation fails, but warn about it
+        try:
+            scale = estimate_goffset_scale(spgr, detector)
+        except RuntimeError:
+            logging.warning("Scale too small, using default 0.5")
+            scale = 0.5
+        # raise RuntimeError(f"Estimated goffset scale too small ({scale}).")
+        # return 0.5 # fallback to a reasonable default if estimation fails, but warn about it
 
     return scale
 
@@ -107,7 +112,7 @@ def SparcAutoGratingOffset(spgr: model.Actuator,
                            detector: model.Detector,
                            tolerance_px: float = 0.2,
                            max_it: int = 20,
-                           gain: float = 0.3) -> model.ProgressiveFuture:
+                           gain: float = 0.4) -> model.ProgressiveFuture:
 
     est_start = time.time() + 0.05
     est_time = max_it*0.5  # conservative estimate
@@ -160,7 +165,7 @@ def _DoSparcAutoGratingOffset(future: model.ProgressiveFuture,
 
             print(f"DEBUG | Iter: {i} | Peak: {peak_px:.1f} | Error: {error_px:.1f} | Move: {delta_goffset:.4f} | Total Change: {total_goffset_displacement:.4f}")
             spgr.moveRelSync({"goffset": delta_goffset})
-            time.sleep(2)
+            time.sleep(3)
 
             future.set_progress(
                 end=time.time() + (max_it-i-1)*0.5)  # update estimated end time for the progress bar
