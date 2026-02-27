@@ -103,14 +103,13 @@ def estimate_goffset_scale(spgr: model.Actuator, detector: model.Detector, delta
         except RuntimeError:
             logging.warning("Scale too small, using default 0.5")
             scale = 0.5
-        # raise RuntimeError(f"Estimated goffset scale too small ({scale}).")
-        # return 0.5 # fallback to a reasonable default if estimation fails, but warn about it
 
     return scale
 
 def SparcAutoGratingOffset(spgr: model.Actuator,
                            detector: model.Detector,
-                           tolerance_px: float = 0.2,
+                           align_grating: bool = True,
+                           tolerance_px: float = 0.4,
                            max_it: int = 20,
                            gain: float = 0.4) -> model.ProgressiveFuture:
 
@@ -122,18 +121,21 @@ def SparcAutoGratingOffset(spgr: model.Actuator,
     f._centering_lock = threading.Lock()
     f.task_canceller = _CancelSparcAutoGratingOffset
 
-    executeAsyncTask(f, _DoSparcAutoGratingOffset, args=(f, spgr, detector, tolerance_px, max_it, gain))
+    executeAsyncTask(f, _DoSparcAutoGratingOffset, args=(f, spgr, detector, align_grating, tolerance_px, max_it, gain))
 
     return f
 
 def _DoSparcAutoGratingOffset(future: model.ProgressiveFuture,
                               spgr: model.Actuator,
                               detector: model.Detector,
+                              align_grating: bool,
                               tolerance_px: float,
                               max_it: int,
                               gain: float) -> bool:
 
     success = False
+
+    logging.info("Running alignment | detector=%s | align_grating=%s",detector.name, align_grating,)
 
     try:
         scale = estimate_goffset_scale(spgr, detector)
@@ -155,7 +157,7 @@ def _DoSparcAutoGratingOffset(future: model.ProgressiveFuture,
 
             delta_goffset = -gain*(error_px/scale)
 
-            # Clamp move to safe fraction of axis range
+            # clamp move to safe fraction of axis range
             axis = spgr.axes["goffset"]
             minv, maxv = axis.range
             max_step = 0.1*(maxv-minv)  # max 10% of range
@@ -165,10 +167,10 @@ def _DoSparcAutoGratingOffset(future: model.ProgressiveFuture,
 
             print(f"DEBUG | Iter: {i} | Peak: {peak_px:.1f} | Error: {error_px:.1f} | Move: {delta_goffset:.4f} | Total Change: {total_goffset_displacement:.4f}")
             spgr.moveRelSync({"goffset": delta_goffset})
-            time.sleep(3)
+            time.sleep(2)
 
             future.set_progress(
-                end=time.time() + (max_it-i-1)*0.5)  # update estimated end time for the progress bar
+                end=time.time() + (max_it-i-1)*0.5)  # update estimated end time
 
         logging.warning("SparcAutoGratingOffset did not converge")
         return False
@@ -179,9 +181,6 @@ def _DoSparcAutoGratingOffset(future: model.ProgressiveFuture,
     except Exception as e:
         logging.error(f"Alignment error: {e}")
         raise
-
-    with future._centering_lock:
-        future._centering_state = FINISHED
 
 def _CancelSparcAutoGratingOffset(future: model.ProgressiveFuture):
     with future._centering_lock:

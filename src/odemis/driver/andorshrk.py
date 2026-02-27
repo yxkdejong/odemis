@@ -1603,7 +1603,7 @@ class Shamrock(model.Actuator):
 
         return gchoices
 
-    def GetGoffset(self): #Added
+    def GetGoffset(self):
         grating = self.GetGrating()
         if "flip-in" in self.axes:
             flip_in_pos = self.GetFlipperMirror(INPUT_FLIPPER)
@@ -1626,7 +1626,7 @@ class Shamrock(model.Actuator):
         # TODO: support "axes" to limit the axes to update
         pos = {"wavelength": self.GetWavelength(),
                "grating": self.GetGrating(),
-               "goffset": self.GetGoffset() #Added
+               "goffset": self.GetGoffset()
               }
 
         if "focus" in self.axes:
@@ -1836,7 +1836,7 @@ class Shamrock(model.Actuator):
                 actions.append((axis, self._doSetWavelengthRel, s))
             elif axis == "focus":
                 actions.append((axis, self._doSetFocusRel, s))
-            elif axis == "goffset": #Added
+            elif axis == "goffset":
                 actions.append((axis, self._doSetGoffsetRel, s))
             elif axis in self._slit_names.values():
                 sid = [k for k, v in self._slit_names.items() if v == axis][0]
@@ -1875,7 +1875,7 @@ class Shamrock(model.Actuator):
                 actions.append((axis, self._doSetFilter, p, check))
             elif axis == "focus":
                 actions.append((axis, self._doSetFocusAbs, p))
-            elif axis == "goffset": #Added
+            elif axis == "goffset":
                 actions.append((axis, self._doSetGoffsetAbs, p))
             elif axis == "flip-in":
                 check = self._check_move.get(axis, True)
@@ -2090,7 +2090,7 @@ class Shamrock(model.Actuator):
             logging.warning("Failed to update turret position, detector offset might be incorrect", exc_info=True)
         self._updatePosition()
 
-    def _doSetGoffsetAbs(self, target_offset): #Added
+    def _doSetGoffsetAbs(self, target_offset, *, allow_grating_offset=True):
         target_offset = int(round(target_offset)) # ensure that we get integers for steps
         grating = self.GetGrating()
 
@@ -2112,8 +2112,11 @@ class Shamrock(model.Actuator):
                           current_grat_offset, current_det_offset)
 
             if grating == 1:
-                grating_offset = target_offset - current_det_offset
-                self.SetGratingOffset(grating, grating_offset)
+                if not allow_grating_offset:
+                    logging.debug("Grating offset update disabled (grating=1, target=%d)",target_offset,)
+                else:
+                    grating_offset = target_offset - current_det_offset
+                    self.SetGratingOffset(grating, grating_offset)
 
             elif grating > 1:
                 detector_offset = target_offset - current_grat_offset
@@ -2121,7 +2124,7 @@ class Shamrock(model.Actuator):
 
             self._updatePosition()
 
-    def _doSetGoffsetRel(self, shift): #Added
+    def _doSetGoffsetRel(self, shift):
         current_pos = self.position.value.get("goffset", 0)
         return self._doSetGoffsetAbs(current_pos + shift)
 
