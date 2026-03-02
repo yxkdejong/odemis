@@ -30,14 +30,14 @@ def Gaussian(x, amplitude, x0, width):
 
 def find_peak_position(data: numpy.ndarray, window_radius: int = 15) -> float:
     if data.ndim == 2:
-        spectrum = data.mean(axis=0)  # squash data into a 1D array
+        spectrum = data.mean(axis=0)  # squash data into a 1D array if input is 2D
     else:
         spectrum = data
 
     x = numpy.arange(len(spectrum))
     peak_idx = numpy.argmax(spectrum)  # find the absolute highest point
 
-    # create a window around the peak
+    # create a window around the peak to minimize noise influence
     start = max(0, peak_idx - window_radius)
     end = min(len(spectrum), peak_idx + window_radius + 1)
     window_data = spectrum[start:end]
@@ -49,9 +49,9 @@ def find_peak_position(data: numpy.ndarray, window_radius: int = 15) -> float:
     if weights.sum() == 0:
         weighted_avg = float(peak_idx)
     else:
-        weighted_avg = float(numpy.sum(window_idx * window_data) / numpy.sum(window_data))
+        weighted_avg = float(numpy.sum(window_idx*window_data)/numpy.sum(window_data))
 
-    # try Gaussian fit
+    # try Gaussian fit for better accuracy, but fallback to weighted average if it fails or gives unreasonable result
 
     try:
         p0 = [window_data.max(), weighted_avg, 2.5]
@@ -71,6 +71,7 @@ def estimate_goffset_scale(spgr: model.Actuator, detector: model.Detector, delta
     """
     Estimates how many pixels the peak shifts per 1 unit of goffset.
     """
+
     # get initial state
     data0 = detector.data.get(asap=False)
     p0 = find_peak_position(data0)
@@ -111,7 +112,7 @@ def SparcAutoGratingOffset(spgr: model.Actuator,
                            align_grating: bool = True,
                            tolerance_px: float = 0.4,
                            max_it: int = 20,
-                           gain: float = 0.4) -> model.ProgressiveFuture:
+                           gain: float = 0.7) -> model.ProgressiveFuture:
 
     est_start = time.time() + 0.05
     est_time = max_it*0.5  # conservative estimate
@@ -133,13 +134,17 @@ def _DoSparcAutoGratingOffset(future: model.ProgressiveFuture,
                               max_it: int,
                               gain: float) -> bool:
 
+    """
+    Iteratively adjust the goffset to center the spectral peak on the detector.
+    """
+
     success = False
 
     logging.info("Running alignment | detector=%s | align_grating=%s",detector.name, align_grating,)
 
     try:
-        scale = estimate_goffset_scale(spgr, detector)
-        center_target = detector.resolution.value[0]/2 # adjust if 0 is not the center
+        scale = estimate_goffset_scale(spgr, detector) # estimate the scale factor
+        center_target = detector.resolution.value[0]/2 # find the center pixel coordinate
         total_goffset_displacement = 0.0
 
         for i in range(max_it):
@@ -167,7 +172,7 @@ def _DoSparcAutoGratingOffset(future: model.ProgressiveFuture,
 
             print(f"DEBUG | Iter: {i} | Peak: {peak_px:.1f} | Error: {error_px:.1f} | Move: {delta_goffset:.4f} | Total Change: {total_goffset_displacement:.4f}")
             spgr.moveRelSync({"goffset": delta_goffset})
-            time.sleep(2)
+            time.sleep(6)
 
             future.set_progress(
                 end=time.time() + (max_it-i-1)*0.5)  # update estimated end time

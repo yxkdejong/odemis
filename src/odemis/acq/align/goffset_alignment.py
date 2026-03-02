@@ -49,6 +49,11 @@ def _checkCancelled(future: "model.ProgressiveFuture"):
 
 def _totalAlignmentTime(n_gratings: int,
                         n_detectors: int) -> float:
+
+    """
+    Estimate total time for aligning all grating-detector combinations.
+    """
+
     runs = n_detectors + max(0, n_gratings - 1)
     move_time = ((n_gratings-1)*MOVE_TIME_GRATING+(n_detectors-1)*MOVE_TIME_DETECTOR)
 
@@ -95,6 +100,12 @@ def _DoAutoAlignGratingDetectorOffsets(future: model.ProgressiveFuture,
                                        streams: List['Stream'],
                                        stabilization_time: float = 15.0) -> Optional[Dict[Any, Any]]:
 
+    """
+    Iterate through each grating and detector combination, adjusting the selector if provided, and run the auto-alignment algorithm.
+     - If a selector is provided, it will be used to switch between detectors for the first grating, then the first detector will be used for all subsequent gratings.
+     - For multiple detectors, the grating alignment will only be adjusted for the first detector; subsequent detectors will be aligned by adjusting the detector offset with the grating alignment fixed.
+    """
+
     results: dict[tuple, bool] = {}
     original_pos = {k: v for k, v in spectrograph.position.value.items()
                     if k in ("wavelength", "grating")}
@@ -122,6 +133,7 @@ def _DoAutoAlignGratingDetectorOffsets(future: model.ProgressiveFuture,
 
         detectors_sorted = sorted(detectors, key=is_current_detector, reverse=True)
 
+        # align each detector for the first grating
         for d in detectors_sorted:
             _checkCancelled(future)
             logging.info(f"Starting alignment | Detector: {d.name} | Grating: {g0}")
@@ -138,6 +150,7 @@ def _DoAutoAlignGratingDetectorOffsets(future: model.ProgressiveFuture,
         if selector:
             selector.moveAbsSync({selector_axes: detector_to_selector[first_detector]})
 
+        # align remaining gratings using the first detector
         for g in gratings[1:]:
             _checkCancelled(future)
             logging.info(f"Switching to grating: {g}")
