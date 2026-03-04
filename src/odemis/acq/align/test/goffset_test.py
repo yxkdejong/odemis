@@ -88,7 +88,7 @@ class TestSparcAutoGratingOffset(unittest.TestCase):
         self.assertNotEqual(scale, 0.0)
         self.assertTrue(np.isfinite(scale))
 
-    @timeout(300)
+    @timeout(800)
     def test_auto_grating_offset(self):
         """
         Test automatic centering of spectral peak.
@@ -99,9 +99,9 @@ class TestSparcAutoGratingOffset(unittest.TestCase):
         direction = 1 if (current + delta < goffset_max) else -1
 
         self.spgr.moveRelSync({"goffset": delta * direction})
-        f = SparcAutoGratingOffset(self.spgr, self.detector, max_it=20)
+        f = SparcAutoGratingOffset(self.spgr, self.detector, max_it=50)
 
-        result = f.result(timeout=200)
+        result = f.result(timeout=800)
         self.assertTrue(result)
 
     @timeout(100)

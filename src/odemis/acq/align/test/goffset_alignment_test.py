@@ -113,7 +113,7 @@ class TestAutoAlignGratingDetectorOffsets(unittest.TestCase):
 
         # move to spectral camera
         self.selector.moveAbsSync({"rx": 1.5707963267948966})
-        data = self.spccd.data.get(asap=False)
+        data = spccd.data.get(asap=False)
 
         # check data is not flat
         if data.max() == data.min():
