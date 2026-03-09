@@ -2132,7 +2132,7 @@ class Shamrock(model.Actuator):
                 grating_offset = target_offset - current_det_offset
                 self.SetGratingOffset(grating, grating_offset)
 
-        else grating > 1:
+        else:
             detector_offset = target_offset - current_grat_offset
             self.SetDetectorOffset(flip_in_pos, flip_out_pos, detector_offset)
 

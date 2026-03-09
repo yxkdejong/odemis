@@ -4,19 +4,16 @@ Test Sparc auto grating offset alignment
 """
 
 import os
-import time
 import unittest
 import logging
 import numpy as np
-
-from concurrent.futures._base import CancelledError
 
 from odemis import model
 from odemis.util import testing, timeout
 from odemis.acq.align.goffset import (
     find_peak_position,
     estimate_goffset_scale,
-    SparcAutoGratingOffset,
+    sparc_auto_grating_offset,
 )
 
 import odemis
@@ -93,13 +90,13 @@ class TestSparcAutoGratingOffset(unittest.TestCase):
         """
         Test automatic centering of spectral peak.
         """
-        delta = 0 # intentionally misalign
+        delta = 20 # intentionally misalign
         current = self.spgr.position.value["goffset"]
         goffset_max = self.spgr.axes["goffset"].range[1]
         direction = 1 if (current + delta < goffset_max) else -1
 
         self.spgr.moveRelSync({"goffset": delta * direction})
-        f = SparcAutoGratingOffset(self.spgr, self.detector, max_it=50)
+        f = sparc_auto_grating_offset(self.spgr, self.detector, max_it=50)
 
         result = f.result(timeout=800)
         self.assertTrue(result)
@@ -109,7 +106,7 @@ class TestSparcAutoGratingOffset(unittest.TestCase):
         """
         Test cancelling alignment.
         """
-        f = SparcAutoGratingOffset(self.spgr, self.detector)
+        f = sparc_auto_grating_offset(self.spgr, self.detector)
         # Wait for the result or a timeout
         try:
             f.result(timeout=5)
