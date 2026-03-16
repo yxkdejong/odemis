@@ -2104,6 +2104,7 @@ class Shamrock(model.Actuator):
     def _doSetGoffsetAbs(self, target_offset, *, allow_grating_offset=True):
         target_offset = int(round(target_offset)) # ensure that we get integers for steps
         grating = self.GetGrating()
+        port_index = self.GetFlipperMirror(OUTPUT_FLIPPER)
 
         if "flip-in" in self.axes:
             flip_in_pos = self.GetFlipperMirror(INPUT_FLIPPER)
@@ -2125,13 +2126,15 @@ class Shamrock(model.Actuator):
         # (e.g. flipper mirrors) that shift the spectrum on the detector. By adding the detector offset to the grating offset,
         # the reported goffset always matches the observed spectral alignment, keeping calibration consistent.
 
-        if grating == 1:
+        if port_index == 0:
+            # primary detector -> modify grating offset
             if not allow_grating_offset:
                 logging.debug("Grating offset update disabled (grating=1, target=%d)",target_offset,)
             else:
                 grating_offset = target_offset - current_det_offset
                 self.SetGratingOffset(grating, grating_offset)
 
+        # secondary detector -> modify detector offset
         else:
             detector_offset = target_offset - current_grat_offset
             self.SetDetectorOffset(flip_in_pos, flip_out_pos, detector_offset)

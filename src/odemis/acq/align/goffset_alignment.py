@@ -13,6 +13,7 @@ from odemis.util import executeAsyncTask, almost_equal
 from odemis.acq.align.goffset import SparcAutoGratingOffset
 
 
+
 def _mapDetectorToSelector(selector: model.Actuator,
                            detectors: List[model.Detector]) -> Tuple[str, Dict[str, Any]]:
     det_2_sel = {}

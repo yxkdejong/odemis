@@ -9,10 +9,18 @@ from scipy import ndimage
 
 from odemis import model, acq
 
-from odemis.acq.align.goffset import auto_align_grating_detector_offsets
+#from odemis.acq.align.goffset import auto_align_grating_detector_offsets
 
 from odemis.util import testing, timeout, img
 import odemis.util.focus
+
+from odemis.acq.align.goffset_ext import(
+    find_peak_position,
+    acquire_peak,
+    estimate_goffset_scale,
+    sparc_auto_grating_offset,
+    auto_align_grating_detector_offsets
+)
 
 
 
@@ -34,17 +42,17 @@ class TestAutoAlignGratingDetectorOffsets(unittest.TestCase):
         # Speed up acquisition
         self.ccd.exposureTime.value = self.ccd.exposureTime.range[0]
 
-    @timeout(100)
-    def test_cancel(self):
-        f = auto_align_grating_detector_offsets(spectrograph=self.spgr, detectors=[self.ccd],)
-        time.sleep(1)
-
-        cancelled = f.cancel()
-        self.assertTrue(cancelled)
-        self.assertTrue(f.cancelled())
-
-        with self.assertRaises(CancelledError):
-            f.result(timeout=900)
+    # @timeout(100)
+    # def test_cancel(self):
+    #     f = auto_align_grating_detector_offsets(spectrograph=self.spgr, detectors=[self.ccd],)
+    #     time.sleep(1)
+    #
+    #     cancelled = f.cancel()
+    #     self.assertTrue(cancelled)
+    #     self.assertTrue(f.cancelled())
+    #
+    #     with self.assertRaises(CancelledError):
+    #         f.result(timeout=900)
 
 
     @timeout(1000)

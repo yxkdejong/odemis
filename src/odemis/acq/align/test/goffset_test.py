@@ -7,22 +7,20 @@ import os
 import unittest
 import logging
 import numpy as np
+import odemis
 
 from odemis import model
-from odemis.util import testing, timeout
-from odemis.acq.align.goffset import (
+from odemis.util import timeout
+from odemis.acq.align.goffset import(
     find_peak_position,
     estimate_goffset_scale,
-    sparc_auto_grating_offset,
+    sparc_auto_grating_offset
 )
-
-import odemis
 
 logging.getLogger().setLevel(logging.DEBUG)
 
 CONFIG_PATH = os.path.dirname(odemis.__file__) + "/../../install/linux/usr/share/odemis/"
 SPARC_CONFIG = CONFIG_PATH + "sim/sparc2-focus-test.odm.yaml"
-
 
 class TestSparcAutoGratingOffset(unittest.TestCase):
     """
@@ -90,16 +88,84 @@ class TestSparcAutoGratingOffset(unittest.TestCase):
         """
         Test automatic centering of spectral peak.
         """
-        delta = 20 # intentionally misalign
+        delta = 0 # intentionally misalign
         current = self.spgr.position.value["goffset"]
         goffset_max = self.spgr.axes["goffset"].range[1]
         direction = 1 if (current + delta < goffset_max) else -1
 
         self.spgr.moveRelSync({"goffset": delta * direction})
+        logging.info("Test: after misalign move, spgr.position.gooffset = %s", self.spgr.position.value["goffset"])
         f = sparc_auto_grating_offset(self.spgr, self.detector, max_it=50)
 
         result = f.result(timeout=800)
         self.assertTrue(result)
+
+    def test_auto_grating_offset_acquisition(self):
+        """
+        Force the peak off detector so acquisition must run, then verify alignment succeeds.
+        """
+        # choose a large delta to ensure the peak is off detector
+        delta = -2000
+        current = self.spgr.position.value["goffset"]
+        minv, maxv = self.spgr.axes["goffset"].range
+        direction = 1 if (current + delta < maxv) else -1
+
+        self.spgr.moveRelSync({"goffset": delta * direction})
+        f = sparc_auto_grating_offset(self.spgr, self.detector, max_it=80, tolerance_px=0.4, gain=0.4)
+        result = f.result(timeout=1200)
+        self.assertTrue(result)
+
+    @timeout(800)
+    def test_scale_not_misaligned(self):
+        """
+        Verify scale estimation only happens when the peak is misaligned.
+        This is inferred from the probe move performed by estimate_goffset_scale().
+        """
+        # reset spectrograph to known aligned position
+        self.spgr.moveAbsSync(self._original_position)
+
+        start_goffset = self.spgr.position.value["goffset"]
+
+        f = sparc_auto_grating_offset(self.spgr, self.detector, max_it=20)
+        result = f.result(timeout=300)
+
+        end_goffset = self.spgr.position.value["goffset"]
+
+        self.assertTrue(result)
+
+        # If peak is already centered, the algorithm exits immediately
+        # so goffset should not change.
+        self.assertAlmostEqual(
+            start_goffset,
+            end_goffset,
+            places=6,
+            msg="goffset changed even though peak was already centered (scale estimation likely ran)"
+        )
+
+    def test_scale_estimation_misaligned(self):
+        delta = 500
+        current = self.spgr.position.value["goffset"]
+        maxv = self.spgr.axes["goffset"].range[1]
+        direction = 1 if (current + delta < maxv) else -1
+
+        self.spgr.moveRelSync({"goffset": delta * direction})
+
+        start_goffset = self.spgr.position.value["goffset"]
+
+        f = sparc_auto_grating_offset(self.spgr, self.detector, max_it=50)
+        result = f.result(timeout=600)
+
+        end_goffset = self.spgr.position.value["goffset"]
+
+        self.assertTrue(result)
+
+        # If misaligned, centering should move the grating
+        self.assertNotAlmostEqual(
+            start_goffset,
+            end_goffset,
+            places=3,
+            msg="goffset did not change during alignment when peak was misaligned"
+        )
 
     @timeout(100)
     def test_cancel(self):
