@@ -288,6 +288,7 @@ def estimate_goffset_scale(spgr: model.Actuator, detector: model.Detector, delta
 
 def sparc_auto_grating_offset(spgr: model.Actuator,
                               detector: model.Detector,
+                              single_detector_mode: bool = False,
                               tolerance_px: float = 0.4,
                               max_it: int = 20,
                               gain: float = 0.4) -> model.ProgressiveFuture:
@@ -317,7 +318,7 @@ def sparc_auto_grating_offset(spgr: model.Actuator,
     executeAsyncTask(
         f,
         _do_sparc_auto_grating_offset,
-        args=(f, spgr, detector, tolerance_px, max_it, gain),
+        args=(f, spgr, detector, single_detector_mode, tolerance_px, max_it, gain),
     )
 
     return f
@@ -325,6 +326,7 @@ def sparc_auto_grating_offset(spgr: model.Actuator,
 def _do_sparc_auto_grating_offset(future: model.ProgressiveFuture,
                                   spgr: model.Actuator,
                                   detector: model.Detector,
+                                  single_detector_mode,
                                   tolerance_px: float,
                                   max_it: int,
                                   gain: float) -> bool:
@@ -353,7 +355,7 @@ def _do_sparc_auto_grating_offset(future: model.ProgressiveFuture,
     try:
         center_target = detector.resolution.value[0] / 2
 
-        # initial read: try to get a valid peak without moving the grating ---
+        # initial read: try to get a valid peak without moving the grating
         try:
             data0 = detector.data.get(asap=False)
             peak0 = find_peak_position(data0)   # raises RuntimeError if no peak present
@@ -510,6 +512,8 @@ def auto_align_grating_detector_offsets(spectrograph: model.Actuator,
     if streams is None:
         streams = []
 
+    single_detector_mode = len(detectors) == 1
+
     est_start = time.time() + 0.1
     n_gratings = len(spectrograph.axes["grating"].choices)
     n_detectors = len(detectors)
@@ -520,7 +524,7 @@ def auto_align_grating_detector_offsets(spectrograph: model.Actuator,
     f._task_lock = threading.Lock()
     f._task_state = RUNNING
     f._subfuture = InstantaneousFuture()
-    executeAsyncTask(f, _do_auto_align_grating_detector_offsets, args=(f, spectrograph, detectors, selector, streams))
+    executeAsyncTask(f, _do_auto_align_grating_detector_offsets, args=(f, spectrograph, detectors, selector, streams, single_detector_mode))
     return f
 
 
@@ -534,7 +538,8 @@ def _do_auto_align_grating_detector_offsets(future: model.ProgressiveFuture,
                                             detectors: List[model.Detector],
                                             selector: Optional[model.Actuator],
                                             streams: List['Stream'],
-                                            stabilization_time: float = 15.0) -> Optional[Dict[Any, Any]]:
+                                            single_detector_mode: bool = False,
+                                            stabilization_time: float = 10.0) -> Optional[Dict[Any, Any]]:
     """
     Iterate through each grating and detector combination, adjusting the selector if provided, and run the auto-alignment algorithm.
      - If a selector is provided, it will be used to switch between detectors for the first grating, then the first detector
@@ -587,7 +592,7 @@ def _do_auto_align_grating_detector_offsets(future: model.ProgressiveFuture,
 
             if selector:
                 selector.moveAbsSync({selector_axes: detector_to_selector[d]})
-                future._subfuture = sparc_auto_grating_offset(spectrograph, d)
+                future._subfuture = sparc_auto_grating_offset(spectrograph, d, single_detector_mode=single_detector_mode)
                 success = future._subfuture.result()
                 results[(g0, d.name)] = success
 
@@ -605,7 +610,7 @@ def _do_auto_align_grating_detector_offsets(future: model.ProgressiveFuture,
             time.sleep(stabilization_time)
             logging.info("Starting alignment | Detector: %s | Grating: %s", first_detector.name, g)
 
-            future._subfuture = sparc_auto_grating_offset(spectrograph, first_detector)
+            future._subfuture = sparc_auto_grating_offset(spectrograph, first_detector, single_detector_mode=single_detector_mode)
             success = future._subfuture.result()
             results[(g, first_detector.name)] = success
 

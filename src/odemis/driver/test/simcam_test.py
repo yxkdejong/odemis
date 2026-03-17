@@ -497,7 +497,7 @@ class TestSimCamSpectrograph(unittest.TestCase):
         indices = numpy.arange(len(profile))
 
         if numpy.sum(mask) == 0:
-            return float(profile.argmax(()), p_max, profile.mean())
+            return float(profile.argmax(()), float(p_max), float(profile.mean()))
 
         # find the peak
         weighted_average = numpy.sum(indices[mask] * profile[mask]) / numpy.sum(profile[mask])

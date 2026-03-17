@@ -14,7 +14,7 @@ from odemis import model, acq
 from odemis.util import testing, timeout, img
 import odemis.util.focus
 
-from odemis.acq.align.goffset_ext import(
+from odemis.acq.align.goffset import(
     find_peak_position,
     acquire_peak,
     estimate_goffset_scale,
