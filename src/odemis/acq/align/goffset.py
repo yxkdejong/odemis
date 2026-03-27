@@ -1,18 +1,17 @@
 import logging
+import numpy
 import threading
 import time
+
 from collections.abc import Iterable
 from concurrent.futures import CancelledError
 from concurrent.futures._base import CANCELLED, FINISHED, RUNNING
-from typing import Any, Dict, List, Optional, Tuple, Union
-
-import numpy
-
 from odemis import model
 from odemis.acq.align.autofocus import _mapDetectorToSelector
 from odemis.model import InstantaneousFuture
 from odemis.util import executeAsyncTask
 from scipy.optimize import curve_fit
+from typing import Any, Dict, List, Optional, Tuple, Union
 
 
 def gaussian(x, amplitude, x0, width) -> numpy.ndarray:
@@ -106,7 +105,9 @@ def find_peak_position(data: numpy.ndarray, window_radius: int = 15) -> float:
 
     return weighted_avg
 
-def peak_is_present(spectrum, snr_threshold=1, width_range=(0.5, 12.0)) -> bool:
+def peak_is_present(spectrum: numpy.ndarray,
+                    snr_threshold: float=1.0,
+                    width_range: Tuple[float, float]=(0.5, 12.0)) -> bool:
     """
        Test to decide whether spectral peak is present.
 
@@ -150,7 +151,7 @@ def peak_is_present(spectrum, snr_threshold=1, width_range=(0.5, 12.0)) -> bool:
     return present
 
 
-def acquire_peak(spgr, detector, step=2000) -> Tuple[float, float]:
+def acquire_peak(spgr, detector, step: int=2000) -> Tuple[float, float]:
     """
     Coarse scan across the goffset axis until a real peak becomes visible.
 
@@ -171,7 +172,7 @@ def acquire_peak(spgr, detector, step=2000) -> Tuple[float, float]:
 
     current = float(spgr.position.value["goffset"])
     step = abs(step) if step != 0 else 2000.0
-    max_span = 20000.0  # limit how far we wander from the current valid position
+    max_span = 200000.0  # limit how far we wander from the current valid position
 
     logging.debug(
         "Coarse local scan around goffset %.1f with step %.1f and max span %.1f",
@@ -211,8 +212,10 @@ def acquire_peak(spgr, detector, step=2000) -> Tuple[float, float]:
 
     raise RuntimeError("Peak not found in local goffset scan around current position")
 
-def estimate_goffset_scale(spgr: model.Actuator, detector: model.Detector, delta=5.0, retries=1) -> Tuple[
-    float, float, float]:
+def estimate_goffset_scale(spgr: model.Actuator,
+                           detector: model.Detector,
+                           delta: float=5.0,
+                           retries: int=1) -> Tuple[float, float, float]:
     """
     Estimate the scale factor between a change in the grating offset ('goffset')
     and the resulting shift of the spectral peak on the detector.
@@ -290,7 +293,7 @@ def sparc_auto_grating_offset(spgr: model.Actuator,
                               detector: model.Detector,
                               single_detector_mode: bool = False,
                               tolerance_px: float = 0.4,
-                              max_it: int = 20,
+                              max_it: int = 50,
                               gain: float = 0.4) -> model.ProgressiveFuture:
     """
     Start an asynchronous task that centers the spectral peak by adjusting the
@@ -307,7 +310,7 @@ def sparc_auto_grating_offset(spgr: model.Actuator,
     """
 
     est_start = time.time() + 0.05
-    est_time = max_it * 0.5  # conservative estimate
+    est_time = max_it * 0.5  # rough estimated time
 
     f = model.ProgressiveFuture(start=est_start, end=est_start + est_time)
 
@@ -447,7 +450,7 @@ def _do_sparc_auto_grating_offset(future: model.ProgressiveFuture,
         raise
 
 
-def _cancel_sparc_auto_grating_offset(future: model.ProgressiveFuture):
+def _cancel_sparc_auto_grating_offset(future: model.ProgressiveFuture) -> bool:
     """
     Canceller of _do_sparc_auto_grating_offset task.
     """
@@ -455,7 +458,7 @@ def _cancel_sparc_auto_grating_offset(future: model.ProgressiveFuture):
         future._task_state = CANCELLED
 
 
-def _checkCancelled(future: "model.ProgressiveFuture"):
+def _checkCancelled(future: "model.ProgressiveFuture") -> None:
     """
     Check if the future has been cancelled, and if so raise CancelledError.
     """

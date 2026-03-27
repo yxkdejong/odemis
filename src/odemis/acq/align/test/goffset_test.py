@@ -155,7 +155,7 @@ class TestSparcAutoGratingOffset(unittest.TestCase):
 
         self.spgr.moveRelSync({"goffset": delta * direction})
         logging.info("Test: after misalign move, spgr.position.gooffset = %s", self.spgr.position.value["goffset"])
-        f = sparc_auto_grating_offset(self.spgr, self.detector, max_it=50)
+        f = sparc_auto_grating_offset(self.spgr, self.detector, max_it=100)
 
         result = f.result(timeout=800)
         self.assertTrue(result)

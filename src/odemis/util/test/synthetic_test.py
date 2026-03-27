@@ -203,6 +203,7 @@ class TestPeakSimulation(unittest.TestCase):
 
         dtype_max = numpy.iinfo(numpy.uint8).max
         self.assertLessEqual(peak.max(), dtype_max)
+        self.assertEqual(peak[x0], dtype_max)
 
 if __name__ == "__main__":
     unittest.main()

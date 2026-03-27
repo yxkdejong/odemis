@@ -1609,10 +1609,8 @@ class Shamrock(model.Actuator):
         Checks the current grating and flip-mirror positions.
         Returns the grating offset, consisting of the grating_offset + the detector offset.
 
-        The detector offset is the equivalent grating offset that is needed to compensate for the change in
-        optical path length, introduced by the flip-mirrors.
-        This allows to maintain a stable wavelength calibration across different optical paths, rather than forcing the user
-        to recalibrate for every detector configuration.
+        The detector offset compensates for small inaccuracies introduced by the flip-mirror mechanism.
+        This value is normally stable and seldom requires re-adjustment.
         """
 
         grating = self.GetGrating()
@@ -2101,10 +2099,9 @@ class Shamrock(model.Actuator):
             logging.warning("Failed to update turret position, detector offset might be incorrect", exc_info=True)
         self._updatePosition()
 
-    def _doSetGoffsetAbs(self, target_offset, *, allow_grating_offset=True, single_detector_mode=False):
+    def _doSetGoffsetAbs(self, target_offset: float, *, allow_grating_offset: bool=True, single_detector_mode: bool=False) -> None:
         target_offset = int(round(target_offset)) # ensure that we get integers for steps
         grating = self.GetGrating()
-        port_index = self.GetFlipperMirror(OUTPUT_FLIPPER)
 
         if "flip-in" in self.axes:
             flip_in_pos = self.GetFlipperMirror(INPUT_FLIPPER)
@@ -2116,16 +2113,18 @@ class Shamrock(model.Actuator):
         else:
             flip_out_pos = DIRECT_PORT
 
-        single_detector = bool(single_detector_mode)
+        port_index = flip_out_pos
+
+        single_detector = single_detector_mode
         current_grat_offset = self.GetGratingOffset(grating)
         current_det_offset = self.GetDetectorOffset(flip_in_pos, flip_out_pos)
         logging.debug("Current goffset: %d (Grat: %d, Det: %d)",
                       (current_grat_offset + current_det_offset),
                       current_grat_offset, current_det_offset)
 
-        # The effective grating offset is the actual grating offset + the detector offset to account for changes in the detector path
-        # (e.g. flipper mirrors) that shift the spectrum on the detector. By adding the detector offset to the grating offset,
-        # the reported goffset always matches the observed spectral alignment, keeping calibration consistent.
+
+        # The detector offset compensates for small inaccuracies introduced by the flip-mirror mechanism.
+        # This value is normally stable and seldom requires re-adjustment.
 
         if port_index == 0 or single_detector:
             logging.debug(
@@ -2149,9 +2148,16 @@ class Shamrock(model.Actuator):
             detector_offset = target_offset - current_grat_offset
             self.SetDetectorOffset(flip_in_pos, flip_out_pos, detector_offset)
 
+        new_grat_offset = self.GetGratingOffset(grating)
+        new_det_offset = self.GetDetectorOffset(flip_in_pos, flip_out_pos)
+
+        logging.info(
+            "Updated offsets -> Grating: %d, Detector: %d, Combined goffset: %d",
+            new_grat_offset, new_det_offset, new_grat_offset + new_det_offset)
+
         self._updatePosition()
 
-    def _doSetGoffsetRel(self, shift):
+    def _doSetGoffsetRel(self, shift) -> None:
         # We expect the goffset axis to exist
         current_pos = self.position.value["goffset"]
         return self._doSetGoffsetAbs(current_pos + shift)
