@@ -177,10 +177,11 @@ class TestSparcAutoGratingOffset(unittest.TestCase):
         self.assertEqual(len(dets_first), n_detectors)
 
     def test_multi_detector_iteration(self):
+        ccd = model.getComponent(role="ccd")
         spccd = model.getComponent(role="sp-ccd")
         spccd.exposureTime.value = spccd.exposureTime.range[0]
 
-        detectors = [self.ccd, spccd]
+        detectors = [ccd, spccd]
 
         # run alignment
         f = auto_align_grating_detector_offsets(spectrograph=self.spgr, detectors=detectors, selector=self.selector)
@@ -199,7 +200,7 @@ class TestSparcAutoGratingOffset(unittest.TestCase):
 
         dets_for_first_grating = [d for (g, d) in res.keys() if g == first_grating]
         self.assertEqual(len(dets_for_first_grating), n_detectors)
-        self.assertIn(self.ccd.name, dets_for_first_grating)
+        self.assertIn(ccd.name, dets_for_first_grating)
         self.assertIn(spccd.name, dets_for_first_grating)
 
         # verify that only first detector is used for remaining gratings
