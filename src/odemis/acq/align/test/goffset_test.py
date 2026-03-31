@@ -160,71 +160,11 @@ class TestSparcAutoGratingOffset(unittest.TestCase):
         result = f.result(timeout=800)
         self.assertTrue(result)
 
-    @timeout(1000)
-    def test_single_detector_iteration(self):
-        f = auto_align_grating_detector_offsets(spectrograph=self.spgr, detectors=[self.detector], selector=self.selector)
-        res = f.result(timeout=900)
-
-        n_gratings = len(self.spgr.axes["grating"].choices)
-        n_detectors = 1
-        expected = n_detectors + (n_gratings - 1)
-
-        self.assertEqual(len(res), expected)
-
-        first_grating = list(self.spgr.axes["grating"].choices.keys())[0]
-        dets_first = [d for (g, d) in res.keys() if g == first_grating]
-
-        self.assertEqual(len(dets_first), n_detectors)
-
-    def test_multi_detector_iteration(self):
-        ccd = model.getComponent(role="ccd")
-        spccd = model.getComponent(role="sp-ccd")
-        spccd.exposureTime.value = spccd.exposureTime.range[0]
-
-        detectors = [ccd, spccd]
-
-        # run alignment
-        f = auto_align_grating_detector_offsets(spectrograph=self.spgr, detectors=detectors, selector=self.selector)
-        res = f.result(timeout=900)
-
-        # calculate expected results
-        n_gratings = len(self.spgr.axes["grating"].choices)
-        n_detectors = len(detectors)
-        expected_count = n_detectors + (n_gratings - 1)
-
-        self.assertEqual(len(res), expected_count, f"Expected {expected_count} results, got {len(res)}")
-
-        # verify that every detector was used for the first grating
-        gratings_list = list(self.spgr.axes["grating"].choices.keys())
-        first_grating = gratings_list[0]
-
-        dets_for_first_grating = [d for (g, d) in res.keys() if g == first_grating]
-        self.assertEqual(len(dets_for_first_grating), n_detectors)
-        self.assertIn(ccd.name, dets_for_first_grating)
-        self.assertIn(spccd.name, dets_for_first_grating)
-
-        # verify that only first detector is used for remaining gratings
-        for g in gratings_list[1:]:
-            # Ensure only the first detector (index 0) is present for these gratings
-            dets_for_this_grating = [d for (grating, d) in res.keys() if grating == g]
-            self.assertEqual(len(dets_for_this_grating), 1)
-            self.assertEqual(dets_for_this_grating[0], detectors[0].name)
-
-        # move to spectral camera
-        self.selector.moveAbsSync({"rx": 1.5707963267948966})
-        data = spccd.data.get(asap=False)
-
-        # check data is not flat
-        if data.max() == data.min():
-            print("WARNING: sp-ccd is returning a flat image!")
-        else:
-            print(f"sp-ccd signal range: {data.min()} to {data.max()}")
-
     @timeout(600)
     def test_single_detector_updates_grating(self):
         """
         Single-detector mode: aligning a detector on the secondary port must update
-        the *grating* goffset (not a detector-specific offset).
+        the grating offset and not the detector offset.
         """
         spccd = model.getComponent(role="sp-ccd")
         spccd.exposureTime.value = spccd.exposureTime.range[0]
@@ -253,7 +193,7 @@ class TestSparcAutoGratingOffset(unittest.TestCase):
     def test_multi_detector_does_not_change_grating(self):
         """
         Multi-detector mode: first detector sets the grating; aligning the second
-        detector should not change the grating goffset (it should adjust detector offset).
+        detector should not change the grating offset (it should adjust detector offset).
         """
         spccd = model.getComponent(role="sp-ccd")
         spccd.exposureTime.value = spccd.exposureTime.range[0]
@@ -265,7 +205,7 @@ class TestSparcAutoGratingOffset(unittest.TestCase):
             logging.debug("Selector move to primary failed or not present; continuing")
 
         # align first detector in single-detector mode to set grating
-        f_first = sparc_auto_grating_offset(self.spgr, self.detector, single_detector_mode=True, max_it=50)
+        f_first = sparc_auto_grating_offset(self.spgr, self.detector, max_it=50)
         self.assertTrue(f_first.result(timeout=300), "First-detector alignment failed")
         grating_after_first = self.spgr.position.value["goffset"]
 
@@ -276,7 +216,7 @@ class TestSparcAutoGratingOffset(unittest.TestCase):
             logging.debug("Selector move to secondary failed or not present; continuing")
 
         # align second detector in multi-detector mode (should not change grating)
-        f_second = sparc_auto_grating_offset(self.spgr, spccd, single_detector_mode=False, max_it=50)
+        f_second = sparc_auto_grating_offset(self.spgr, spccd, max_it=50)
         self.assertTrue(f_second.result(timeout=300), "Second-detector alignment failed")
 
         grating_after_second = self.spgr.position.value["goffset"]
@@ -303,7 +243,7 @@ class TestSparcAutoGratingOffset(unittest.TestCase):
         except Exception:
             logging.debug("Selector move to primary failed or not present; continuing")
 
-        f_first = sparc_auto_grating_offset(self.spgr, self.detector, single_detector_mode=True, max_it=50)
+        f_first = sparc_auto_grating_offset(self.spgr, self.detector, max_it=50)
         self.assertTrue(f_first.result(timeout=300), "First-detector alignment failed")
         grating_after_first = self.spgr.position.value["goffset"]
 
@@ -318,7 +258,7 @@ class TestSparcAutoGratingOffset(unittest.TestCase):
         before_peak = float(find_peak_position(data_before))
 
         # Run alignment for second detector in multi-detector mode
-        f_second = sparc_auto_grating_offset(self.spgr, spccd, single_detector_mode=False, max_it=50)
+        f_second = sparc_auto_grating_offset(self.spgr, spccd, max_it=50)
         self.assertTrue(f_second.result(timeout=600), "Second-detector alignment failed")
 
         # Measure peak after alignment
@@ -343,6 +283,68 @@ class TestSparcAutoGratingOffset(unittest.TestCase):
             before_dist,
             msg="Peak did not move closer to center on second detector after alignment"
         )
+
+    def test_single_detector_iteration(self):
+        """
+        Verifies that the auto-alignment algorithm generates the minimum required set
+        of offsets when operating with a single detector and multiple gratings.
+        """
+
+        #f = auto_align_grating_detector_offsets(spectrograph=self.spgr, detectors=[self.ccd], selector=self.selector)
+        f = auto_align_grating_detector_offsets(spectrograph=self.spgr, detectors=self.detector, selector=self.selector)
+
+        res = f.result(timeout=900)
+
+        n_gratings = len(self.spgr.axes["grating"].choices)
+        n_detectors = 1
+        expected = n_detectors + (n_gratings - 1)
+
+        self.assertEqual(len(res), expected)
+
+        first_grating = list(self.spgr.axes["grating"].choices.keys())[0]
+        dets_first = [d for (g, d) in res.keys() if g == first_grating]
+
+        self.assertEqual(len(dets_first), n_detectors)
+
+    def test_multi_detector_iteration(self):
+        spccd = model.getComponent(role="sp-ccd")
+        spccd.exposureTime.value = spccd.exposureTime.range[0]
+
+        detectors = [self.ccd, spccd]
+
+        # run alignment
+        f = auto_align_grating_detector_offsets(spectrograph=self.spgr, detectors=detectors, selector=self.selector)
+        res = f.result(timeout=900)
+
+        # calculate expected results
+        n_gratings = len(self.spgr.axes["grating"].choices)
+        n_detectors = len(detectors)
+        expected_count = n_detectors + (n_gratings - 1)
+
+        self.assertEqual(len(res), expected_count, f"Expected {expected_count} results, got {len(res)}")
+
+        # verify that every detector was used for the first grating
+        gratings_list = list(self.spgr.axes["grating"].choices.keys())
+        first_grating = gratings_list[0]
+
+        dets_for_first_grating = [d for (g, d) in res.keys() if g == first_grating]
+        self.assertEqual(len(dets_for_first_grating), n_detectors)
+        self.assertIn(self.ccd.name, dets_for_first_grating)
+        self.assertIn(spccd.name, dets_for_first_grating)
+
+        # verify that only first detector is used for remaining gratings
+        for g in gratings_list[1:]:
+            # Ensure only the first detector (index 0) is present for these gratings
+            dets_for_this_grating = [d for (grating, d) in res.keys() if grating == g]
+            self.assertEqual(len(dets_for_this_grating), 1)
+            self.assertEqual(dets_for_this_grating[0], detectors[0].name)
+
+        # move to spectral camera
+        self.selector.moveAbsSync({"rx": 1.5707963267948966})
+        data = spccd.data.get(asap=False)
+
+        # check data is not flat
+        self.assertNotEqual(data.max(), data.min)
 
     @timeout(100)
     def test_cancel(self):

@@ -1604,10 +1604,10 @@ class Shamrock(model.Actuator):
 
         return gchoices
 
-    def GetGoffset(self):
+    def GetGoffset(self) -> float:
         """
         Checks the current grating and flip-mirror positions.
-        Returns the grating offset, consisting of the grating_offset + the detector offset.
+        Returns the grating offset, consisting of the grating_offset + the detector offset (float).
 
         The detector offset compensates for small inaccuracies introduced by the flip-mirror mechanism.
         This value is normally stable and seldom requires re-adjustment.
@@ -2099,7 +2099,15 @@ class Shamrock(model.Actuator):
             logging.warning("Failed to update turret position, detector offset might be incorrect", exc_info=True)
         self._updatePosition()
 
-    def _doSetGoffsetAbs(self, target_offset: float, *, allow_grating_offset: bool=True, single_detector_mode: bool=False) -> None:
+    def _doSetGoffsetAbs(self, target_offset: float) -> None:
+        """
+        Sets the absolute grating offset (goffset) for the current configuration.
+        The goffset is the sum of the grating offset for the currently selected grating and
+        the detector offset associated with the current flip-mirror positions.
+
+        For the first detector to be calibrated (or if there's only one available) the grating offset is adjusted for
+        each grating. For the other detector, only the detector offset will be adjusted.
+        """
         target_offset = int(round(target_offset)) # ensure that we get integers for steps
         grating = self.GetGrating()
 
@@ -2113,38 +2121,45 @@ class Shamrock(model.Actuator):
         else:
             flip_out_pos = DIRECT_PORT
 
-        port_index = flip_out_pos
-
-        single_detector = single_detector_mode
         current_grat_offset = self.GetGratingOffset(grating)
         current_det_offset = self.GetDetectorOffset(flip_in_pos, flip_out_pos)
+
         logging.debug("Current goffset: %d (Grat: %d, Det: %d)",
                       (current_grat_offset + current_det_offset),
                       current_grat_offset, current_det_offset)
 
-
         # The detector offset compensates for small inaccuracies introduced by the flip-mirror mechanism.
         # This value is normally stable and seldom requires re-adjustment.
 
-        if port_index == 0 or single_detector:
-            logging.debug(
-                "Choosing grating offset update (port_index=%s single_detector=%s)",
-                port_index, single_detector
-            )
+        # Get all detectors
+        input_ports = [DIRECT_PORT]
+        if "flip-in" in self.axes:
+            input_ports.append(self.GetFlipperMirror(INPUT_FLIPPER))
 
-            # primary detector -> modify grating offset
-            if not allow_grating_offset:
-                logging.debug("Grating offset update disabled (grating=1, target=%d)",target_offset,)
-            else:
-                grating_offset = target_offset - current_det_offset
-                self.SetGratingOffset(grating, grating_offset)
+        output_ports = [DIRECT_PORT]
+        if "flip-out" in self.axes:
+            output_ports.append(self.GetFlipperMirror(OUTPUT_FLIPPER))
 
-        # secondary detector -> modify detector offset
+        all_detectors = [(i, o) for i in input_ports for o in output_ports]
+
+        current_detector = (flip_in_pos, flip_out_pos)
+        reference_detector = all_detectors[0]
+        is_multi_detector = len(all_detectors) > 1
+
+        # Apply offsets
+        # For the first detector (doesn't matter to which port it's connected), the grating offset is adjusted for
+        # all gratings. For the second detector, only the detector offset is adjusted.
+
+        if not is_multi_detector:
+            logging.debug("Single detector system -> updating grating offset")
+            self.SetGratingOffset(grating, target_offset)
+
+        elif current_detector == reference_detector:
+            logging.debug("Reference detector -> updating grating offset")
+            self.SetGratingOffset(grating, target_offset)
+
         else:
-            logging.debug(
-                "Choosing detector offset update (port_index=%s single_detector=%s)",
-                port_index, single_detector
-            )
+            logging.debug("Secondary detector -> updating detector offset")
             detector_offset = target_offset - current_grat_offset
             self.SetDetectorOffset(flip_in_pos, flip_out_pos, detector_offset)
 
@@ -2551,6 +2566,8 @@ class FakeShamrockDLL(object):
     def ShamrockSetGratingOffset(self, device, grating, offset):
         cur_offset = self._goffset[_val(grating) - 1]
         new_offset = _val(offset)
+        # add sleep to ensure mechanical movement is finished before the next command
+        # based on 10000 steps/s (estimate)
         time.sleep(abs(cur_offset - new_offset) / 10000)
         self._goffset[_val(grating) - 1] = _val(offset)
 

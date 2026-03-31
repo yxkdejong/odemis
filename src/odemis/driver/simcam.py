@@ -450,9 +450,8 @@ class Camera(model.DigitalCamera):
             bin_x = binning[0]  # binning factor along x-axis
             peak_center_binned = (x0_px - roi_left) / bin_x  # express the peak position in the ROI's coordinate system
 
-            logging.info("DEBUG: x0_px=%s, ltrb0=%s, result=%s",
-                         x0_px, roi_left, peak_center_binned
-                         )
+            logging.debug("Peak center: x0_px=%s, ROI left: ltrb0=%s, Peak center (binned): %s",
+                         x0_px, roi_left, peak_center_binned)
 
             width_binned = PEAK_WIDTH / bin_x
 
@@ -472,19 +471,6 @@ class Camera(model.DigitalCamera):
 
             # final clamp to prevent overflow
         sim_img = numpy.minimum(sim_img, mx)
-
-
-        #     # set all values in sim_img to the minimal sim_img value
-        #     min_val = sim_img.min()
-        #     sim_img[...] = min_val
-        #     sim_img += peak
-        #
-        # # Add some noise
-        # mx = self._img.max()
-        # sim_img += numpy.random.randint(0, max(mx // 100, 10), sim_img.shape, dtype=sim_img.dtype)
-        # # Clip, but faster than clip() on big array.
-        # # There can still be some overflow, but let's just consider this "strong noise"
-        # sim_img[sim_img > mx] = mx
 
         return sim_img
 

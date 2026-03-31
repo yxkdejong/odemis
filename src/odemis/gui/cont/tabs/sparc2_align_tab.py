@@ -1573,7 +1573,7 @@ class Sparc2AlignTab(Tab):
             detectors = [main.ccd]
 
         selector = getattr(main, "detector_selector", None)
-        streams = getattr(main, "streams", None)
+        #streams = getattr(main, "streams", None)
 
         # If multiple detectors but no selector, only use the first detector
         if len(detectors) > 1 and selector is None:
@@ -1590,8 +1590,7 @@ class Sparc2AlignTab(Tab):
 
         # Start alignment procedure
         self._auto_calibrate_future = auto_align_grating_detector_offsets(
-            spectrograph, detectors, selector=selector, streams=streams
-        )
+            spectrograph, detectors, selector=selector)
 
         # Bind progress & done callbacks
         self._auto_calibrate_future.add_done_callback(self._on_auto_calibrate_done)
