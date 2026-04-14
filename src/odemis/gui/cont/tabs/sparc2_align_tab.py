@@ -45,7 +45,7 @@ from odemis.acq.align.autofocus import (
     Sparc2AutoFocus,
     Sparc2ManualFocus,
 )
-from odemis.acq.align.goffset import auto_align_grating_detector_offsets
+from odemis.acq.align.goffset_ext import auto_align_grating_detector_offsets
 from odemis.acq.stream_settings import StreamSettingsConfig
 from odemis.gui.comp import popup
 from odemis.gui.conf.data import get_hw_config, get_local_vas
@@ -1544,13 +1544,13 @@ class Sparc2AlignTab(Tab):
 
     # Auto-Calibration
     def _on_btn_auto_calibrate(self, evt):
+
         # Check if there's a process running, if so, cancel and reset
         if hasattr(self, "_auto_calibrate_future") and not self._auto_calibrate_future.done():
             self._auto_calibrate_future.cancel()
 
             self.panel.btn_auto_calibrate.SetLabel("Auto calibrate")
             self.panel.gauge_auto_calibrate.SetValue(0)
-
             return
 
         # Reset progress bar
@@ -1573,20 +1573,16 @@ class Sparc2AlignTab(Tab):
             detectors = [main.ccd]
 
         selector = getattr(main, "detector_selector", None)
-        #streams = getattr(main, "streams", None)
 
         # If multiple detectors but no selector, only use the first detector
         if len(detectors) > 1 and selector is None:
             logging.warning(
-                "Multiple detectors detected but no selector; aligning only the first detector"
-            )
+                "Multiple detectors detected but no selector; aligning only the first detector")
             detectors = [detectors[0]]
 
         logging.info(
             "Starting auto-calibration: detectors=%s selector=%s",
-            [d.name for d in detectors],
-            selector.position.value if selector else None
-        )
+            [d.name for d in detectors], selector.position.value if selector else None)
 
         # Start alignment procedure
         self._auto_calibrate_future = auto_align_grating_detector_offsets(
@@ -1607,26 +1603,20 @@ class Sparc2AlignTab(Tab):
             self.panel.gauge_auto_calibrate.SetValue(100)
             return
 
-        base_progress = getattr(f, "_progress", 0.0)
+        # Fetch where the backend logic says we are
+        target_val = int(getattr(f, "_progress", 0.0) * 100)
+        current_val = self.panel.gauge_auto_calibrate.GetValue()
 
-        # to smooth the progress updates
-        step_start = getattr(f, "_step_start_time", None)
-        step_duration = getattr(f, "_step_duration", None)
+        # Smooth UI trick:
+        # If we are behind the target, catch up quickly.
+        if current_val < target_val:
+            self.panel.gauge_auto_calibrate.SetValue(current_val + 1)
 
-        smooth = 0.0
-        if step_start and step_duration:
-            elapsed = time.time() - step_start
-            smooth = min(1.0, elapsed / step_duration)
-
-            # prevent "stuck at start"
-            smooth = max(0.02, smooth)
-
-            # VERY small contribution (just visual polish)
-            smooth *= 0.02
-
-        progress = min(1.0, base_progress + smooth)
-
-        self.panel.gauge_auto_calibrate.SetValue(int(progress * 100))
+        # If we are caught up, STILL allow the bar to creep up to 5% ahead of the target.
+        # This ensures the bar instantly starts moving to ~4% while waiting
+        # for the hardware's 10-second stabilization time.
+        elif current_val < (target_val + 4) and current_val < 95:
+            self.panel.gauge_auto_calibrate.SetValue(current_val + 1)
 
     def _on_auto_calibrate_done(self, f):
         try:
