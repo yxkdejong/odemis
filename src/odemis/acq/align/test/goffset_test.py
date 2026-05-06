@@ -11,7 +11,7 @@ import odemis
 
 from odemis import model
 from odemis.util import timeout
-from odemis.acq.align.goffset_ext import(
+from odemis.acq.align.goffset import(
     find_peak_position,
     peak_is_present,
     estimate_goffset_scale,

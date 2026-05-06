@@ -32,7 +32,137 @@ def gaussian(x: numpy.ndarray, amplitude: float, x0: float, width: float) -> num
 
     intensity = amplitude * numpy.exp(-0.5 * ((x - x0) / width) ** 2)
     return intensity
-
+#
+# def find_peak_position(data: numpy.ndarray, window_radius: int = 15, snr_threshold: float = 5.0) -> float:
+#     """
+#     Finds the peak position in the given spectrum data.
+#     It can handle both 1D and 2D data (in which case it uses Maximum Intensity Projection).
+#
+#     The function first uses geometric shape-checking (Smooth and Detect) to accurately
+#     find the peak index while ignoring high-amplitude 1-pixel noise spikes.
+#     It then calculates a weighted average of the positions within a window, using the
+#     intensity values as weights. For improved accuracy, it attempts to fit a Gaussian curve.
+#
+#     :param data: 1D or 2D array containing the spectrum
+#     :param window_radius: number of pixels on either side of the peak to include in the window for fitting (default: 15)
+#     :return: estimated peak position in pixels (float)
+#     :raises RuntimeError: if no significant peak is detected (SNR too low)
+#     """
+#
+#     raw_data = numpy.asarray(data, dtype=float)
+#     spectrum = numpy.squeeze(raw_data)
+#
+#     # Maximum Intensity Projection
+#     if spectrum.ndim > 1:
+#         spectrum = spectrum.max(axis=0)
+#
+#     # Geometric Smoothing and Noise Calculation
+#     smoothed_data = Smooth(spectrum, window_len=11)
+#     clean_data = smoothed_data - numpy.median(smoothed_data)
+#     noise_std = numpy.std(clean_data)
+#
+#     # Robust Detection (Using proven 6.8 threshold)
+#     maxtab, _ = Detect(smoothed_data, lookahead=10, delta=(noise_std + 1e-6) * snr_threshold)
+#
+#     if not maxtab:
+#         raise RuntimeError("No peak detected (SNR too low or peak geometry invalid)")
+#
+#     # Sort peaks by intensity and grab the highest valid one
+#     maxtab.sort(key=lambda x: x[1], reverse=True)
+#     peak_idx = int(maxtab[0][0])
+#
+#     # Sub-pixel accuracy windowing
+#     start = max(0, peak_idx - window_radius)
+#     end = min(len(spectrum), peak_idx + window_radius + 1)
+#     window_data = spectrum[start:end]
+#     window_idx = numpy.arange(start, end)
+#
+#     weights = window_data.clip(min=0)
+#
+#     if weights.sum() == 0:
+#         weighted_avg = float(peak_idx)
+#         logging.info("Weighted average fallback: all window data <= 0, using peak_idx=%d as estimate", peak_idx)
+#     else:
+#         weighted_avg = float(numpy.sum(window_idx * window_data) / numpy.sum(weights))
+#
+#     # Gaussian curve fit for highest sub-pixel precision
+#     try:
+#         p0 = [window_data.max(), weighted_avg, 2.5]  # initial guess: [amplitude, center, width]
+#         popt, pcov = curve_fit(gaussian, window_idx, window_data, p0=p0)
+#         peak = popt[1]
+#
+#         if start <= peak <= end:
+#             return float(peak)
+#
+#     except RuntimeError:
+#         logging.debug("Gaussian peak fit did not converge, falling back to weighted average")
+#
+#     except ValueError:
+#         logging.exception("Gaussian peak fit failed due to invalid input")
+#
+#     return weighted_avg
+#
+#
+# def peak_is_present(spectrum: numpy.ndarray,
+#                     snr_threshold: float = 5.0, #arbitrary value for now, based on tests on office hardware
+#                     width_range: Tuple[float, float] = (0.5, 12.0)) -> bool:
+#     """
+#        Test to decide whether spectral peak is present.
+#
+#         The test uses:
+#           - The proven Odemis Detect() algorithm for geometric shape verification.
+#           - A dynamic SNR threshold to reject background noise.
+#           - A local width estimate computed from a small window around the peak.
+#
+#     :param spectrum: 1D or 2D array containing the spectrum
+#     :param snr_threshold: minimum required signal-to-noise ratio for a peak (default: 6.8)
+#     :param width_range: acceptable range of estimated peak widths in pixels (default: (0.5, 12.0))
+#     :return: True if a peak meeting the criteria is present, False otherwise
+#     """
+#
+#     raw_data = numpy.asarray(spectrum, dtype=float) # convert to float
+#     spectrum_1d = numpy.squeeze(raw_data)  # remove any dummy dimensions
+#
+#     # Safely convert 2D data to 1D via MIP if it wasn't done by the caller
+#     if spectrum_1d.ndim > 1:
+#         spectrum_1d = spectrum_1d.max(axis=0)
+#
+#     smoothed_data = Smooth(spectrum_1d, window_len=11) # remove any hot pixels
+#     clean_data = smoothed_data - numpy.median(smoothed_data)
+#     noise_std = numpy.std(clean_data)
+#
+#     # Use Detect() to reject high-amplitude noise spikes that lack gaussian geometry
+#     maxtab, _ = Detect(smoothed_data, lookahead=10, delta=(noise_std + 1e-6) * snr_threshold)
+#
+#     if not maxtab:
+#         return False
+#
+#     # Get the best peak found
+#     maxtab.sort(key=lambda x: x[1], reverse=True)
+#     peak_idx = int(maxtab[0][0])
+#     peak_value = maxtab[0][1]
+#
+#     if peak_idx < 1 or peak_idx > len(spectrum_1d) - 2:
+#         logging.debug("Peak too close to edge idx=%d len=%d", peak_idx, len(spectrum_1d))
+#         return False
+#
+#     # Estimate width around the verified peak
+#     window = spectrum_1d[peak_idx - 2: peak_idx + 3] # create 5-value window (2 on the left, 2 on the right of the peak)
+#     x = numpy.arange(len(window))
+#     w = window - window.min()
+#     if w.sum() == 0:
+#         return False
+#
+#     mean = numpy.sum(x * w) / numpy.sum(w)
+#     var = numpy.sum(w * (x - mean) ** 2) / numpy.sum(w)
+#     width = numpy.sqrt(var)
+#
+#     snr = (peak_value - numpy.median(smoothed_data)) / (noise_std + 1e-6)
+#     present = width_range[0] <= width <= width_range[1]
+#
+#     logging.debug("snr=%.2f width=%.2f present=%s", snr, width, present)
+#
+#     return present
 
 def find_peak_position(data: numpy.ndarray, window_radius: int = 15) -> float:
     """
