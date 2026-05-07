@@ -400,7 +400,7 @@ def _do_sparc_auto_grating_offset(future: model.ProgressiveFuture,
     logging.info("Running alignment | detector=%s |", detector.name)
 
     try:
-        center_target = detector.resolution.value[0] / 2
+        center_target = (detector.resolution.value[0] - 1) / 2
         data0 = detector.data.get(asap=False)
         spectrum0 = data0.max(axis=0) if data0.ndim == 2 else data0
 

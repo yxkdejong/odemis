@@ -10,7 +10,7 @@ import numpy as np
 
 from odemis import model
 from odemis.util import timeout
-from odemis.acq.align.goffset import(
+from odemis.acq.align.goffset_ext import(
     find_peak_position,
     peak_is_present,
     estimate_goffset_scale,
@@ -177,7 +177,7 @@ class TestSparcAutoGratingOffset(unittest.TestCase):
 
         start_goffset = self.spgr.position.value["goffset"]
 
-        f = sparc_auto_grating_offset(self.spgr, spccd, single_detector_mode=True, max_it=50)
+        f = sparc_auto_grating_offset(self.spgr, spccd, max_it=50)
         result = f.result(timeout=300)
         self.assertTrue(result, "Single-detector alignment failed")
 
@@ -315,7 +315,7 @@ class TestSparcAutoGratingOffset(unittest.TestCase):
         spccd = model.getComponent(role="sp-ccd")
         spccd.exposureTime.value = spccd.exposureTime.range[0]
 
-        detectors = [self.ccd, spccd]
+        detectors = [self.detector, spccd]
 
         # run alignment
         f = auto_align_grating_detector_offsets(spectrograph=self.spgr, detectors=detectors, selector=self.selector)
@@ -349,7 +349,7 @@ class TestSparcAutoGratingOffset(unittest.TestCase):
         data = spccd.data.get(asap=False)
 
         # check data is not flat
-        self.assertNotEqual(data.max(), data.min)
+        self.assertNotEqual(data.max(), data.min())
 
     def test_driver_raises_valueerror_on_hardware_limit(self):
         """
