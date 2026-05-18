@@ -679,22 +679,22 @@ def _do_auto_align_grating_detector_offsets(future: model.ProgressiveFuture,
         # is done with any previous actions.
         spectrograph.moveAbsSync({"wavelength": 0})
 
-        # logging.info("Forcing brightlight ON") # bypassing sensor check for simulation
-        # bl.power.value = bl.power.range[1]
-        # time.sleep(1)
+        logging.info("Forcing brightlight ON") # bypassing sensor check for simulation
+        bl.power.value = bl.power.range[1]
+        time.sleep(1)
 
-        logging.info("Turning on brightlight")
-
-        future._subfuture = light.turnOnLight(bl, first_detector)
-
-        try:
-            future._subfuture.result(timeout=60)
-
-        except TimeoutError:
-            future._subfuture.cancel()
-            logging.warning("Brightlight did not confirm ON within 60s; continuing anyway")
-
-        _checkCancelled(future)
+        # logging.info("Turning on brightlight")
+        #
+        # future._subfuture = light.turnOnLight(bl, first_detector)
+        #
+        # try:
+        #     future._subfuture.result(timeout=60)
+        #
+        # except TimeoutError:
+        #     future._subfuture.cancel()
+        #     logging.warning("Brightlight did not confirm ON within 60s; continuing anyway")
+        #
+        # _checkCancelled(future)
 
         logging.info("Setting optical path to alignment mode: %s",align_mode)
         future._subfuture = opm.setPath(align_mode,detector=first_detector)
