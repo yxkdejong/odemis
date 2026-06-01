@@ -53,7 +53,10 @@ def find_peak_position(data: numpy.ndarray, window_radius: int = 15, snr_thresho
     raw_data = numpy.asarray(data, dtype=float)
     spectrum = numpy.squeeze(raw_data)
 
-    # maximum intensity projection
+    # The maximum intensity projection (MIP) is used as it retains the exact maximum intensity value of the peak,
+    # as opposed to mean averaging, which flattens sharp spikes, blending the high-intensity peak with the surrounding
+    # low-intensity baseline noise. MIP maximises SNR and guarantees that the pixel location of the highest intensity
+    # is preserved.
     if spectrum.ndim > 1:
         spectrum = spectrum.max(axis=0)
 
@@ -163,8 +166,6 @@ def peak_is_present(spectrum: numpy.ndarray,
     snr = (peak_value - numpy.median(smoothed_data)) / (noise_std + 1e-6)
     present = width_range[0] <= width <= width_range[1]
 
-    logging.debug("snr=%.2f width=%.2f present=%s", snr, width, present)
-
     return present
 
 def coarse_scan_goffset_for_peak(spgr, detector, future: model.ProgressiveFuture,
@@ -217,7 +218,6 @@ def coarse_scan_goffset_for_peak(spgr, detector, future: model.ProgressiveFuture
         logging.debug("Coarse scan move attempt to goffset %.3f", g)
         try:
             spgr.moveAbsSync({"goffset": g})
-            time.sleep(2) # give hardware time to stabilize
         except ValueError:
             logging.warning("Skipping invalid goffset %.3f (%s)", g, ValueError)
             continue
@@ -282,7 +282,7 @@ def estimate_goffset_scale(spgr: model.Actuator,
     scale = (p1 - p0) / actual_delta
 
     logging.info(
-        "SCALE TRACKING | p0: %.1f | p1: %.1f | Delta: %.1f | Shift: %.1f | Result Scale: %.4f",
+        "Scale Tracking | p0: %.1f | p1: %.1f | Delta: %.1f | Shift: %.1f | Result Scale: %.4f",
         p0, p1, actual_delta, (p1 - p0), scale)
 
     # If the estimated scale is extremely small, the measurement is likely unreliable
@@ -603,9 +603,8 @@ def auto_align_grating_detector_offsets(spectrograph: model.Actuator,
     est_start = time.time() + 0.1
     n_gratings = len(spectrograph.axes["grating"].choices)
     n_detectors = len(detectors)
-    a_time = (_total_alignment_time(n_gratings, n_detectors) + 10)# estimated time to turn on light and close slit
+    a_time = _total_alignment_time(n_gratings, n_detectors) + 10 # estimated time to turn on light and close slit
     f = model.ProgressiveFuture(start=est_start, end=est_start + a_time)
-    f._progress = 0.0
     f.task_canceller = _cancel_auto_align_grating_detector_offsets
 
     f._task_lock = threading.Lock()
@@ -668,7 +667,7 @@ def _do_auto_align_grating_detector_offsets(future: model.ProgressiveFuture,
     # calculate total steps for progress bar
     total_steps = len(detectors) + (len(gratings) - 1)
     current_step = 0
-    future._progress = 0.0
+    start_time = time.time()
 
     # start alignment for the first grating
     try:
@@ -697,11 +696,10 @@ def _do_auto_align_grating_detector_offsets(future: model.ProgressiveFuture,
         # _checkCancelled(future)
 
         logging.info("Setting optical path to alignment mode: %s",align_mode)
-        future._subfuture = opm.setPath(align_mode,detector=first_detector)
+        future._subfuture = opm.setPath(align_mode, detector=first_detector)
         future._subfuture.result()
 
         _checkCancelled(future)
-        future._subfuture = InstantaneousFuture()
 
         g0 = gratings[0]
         logging.info("Starting alignment for initial grating: %s", g0)
@@ -720,16 +718,26 @@ def _do_auto_align_grating_detector_offsets(future: model.ProgressiveFuture,
                 selector.moveAbsSync({selector_axes: detector_to_selector[d]})
                 time.sleep(stabilization_time)
 
-            gui_data = d.data.get(asap=False)
-            log_detector_state("GUI", "INITIAL", d, gui_data)
+            ccd_data = d.data.get(asap=False)
+            log_detector_state("GUI", "INITIAL", d, ccd_data)
 
-            future._subfuture = sparc_auto_grating_offset(spectrograph, d)
+            if d is first_detector:
+                logging.info("Primary detector: using grating alignment (goffset)")
+                future._subfuture = (sparc_auto_grating_offset(spectrograph,d))
+
+            else:
+                logging.info("Secondary detector: using detector-offset alignment")
+                future._subfuture = (sparc_auto_detector_offset(spectrograph, d))
+
             success = future._subfuture.result()
             results[(g0, d.name)] = success
 
             # update progress
             current_step += 1
-            future._progress = current_step / total_steps
+            duration_until_now = time.time() - start_time
+            steps_left = total_steps - current_step
+            time_left = (duration_until_now / current_step) * steps_left
+            future.set_progress(end=time.time() + time_left)
 
             logging.info("Finished alignment | Detector: %s | Grating: %s", d.name, g0)
 
@@ -752,11 +760,14 @@ def _do_auto_align_grating_detector_offsets(future: model.ProgressiveFuture,
 
             # update progress
             current_step += 1
-            future._progress = current_step / total_steps
+            duration_until_now = time.time() - start_time
+            steps_left = total_steps - current_step
+            time_left = (duration_until_now / current_step) * steps_left
+            future.set_progress(end=time.time() + time_left)
 
             logging.info("Finished alignment | Detector: %s | Grating: %s", first_detector.name, g)
 
-        future._progress = 1.0
+        future.set_progress(end=time.time())
         return results
 
     except CancelledError:
@@ -770,9 +781,10 @@ def _do_auto_align_grating_detector_offsets(future: model.ProgressiveFuture,
         except Exception:
             logging.exception("Failed to turn off the light during alignment cleanup")
 
-        spectrograph.moveAbsSync(original_pos)
-        if selector:
-            selector.moveAbsSync(original_selector)
+        try:
+            spectrograph.moveAbsSync(original_pos)
+        except Exception:
+            logging.exception("Failed to restore spectrograph position")
 
         with future._task_lock:
             future._task_state = FINISHED
