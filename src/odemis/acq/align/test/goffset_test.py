@@ -38,7 +38,7 @@ class TestSparcAutoGratingOffset(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         testing.start_backend(SPARC_CONFIG)
-        
+
         cls.detector = model.getComponent(role="ccd")
         cls.spgr = model.getComponent(role="spectrograph")
         cls.spccd = model.getComponent(role="sp-ccd")
